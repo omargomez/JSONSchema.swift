@@ -1,5 +1,42 @@
 import Foundation
 
+class Decorator {
+    
+    let decorated: Validator.Validation
+    
+    init(_ decorted:@escaping Validator.Validation ) {
+        print("### Decorator.init!!!")
+        self.decorated = decorted
+    }
+    
+    func decorate(_ context: Context, _ value: Any, _ instance: Any, _ schema: [String: Any]) throws -> AnySequence<ValidationError> {
+        
+        print("### components: \(context.keywordLocation.components), schema: \(schema.debugDescription)")
+        let result = try decorated(context, value, instance, schema)
+        print("### components: \(context.keywordLocation.components), schema: \(schema.debugDescription)")
+        
+        let count = result.reduce(0) { acc, row in acc + 1 }
+        
+        if count > 0, let errorMap = schema["errors"] as? [String: Any],
+            let key = context.keywordLocation.components.last,
+           let userErrorArray = errorMap[key] as? [String],
+           let firstError = userErrorArray.first
+        {
+//            print("### firstError: \(firstError)")
+            return AnySequence([
+                ValidationError(
+                    firstError,
+                    instanceLocation: context.instanceLocation,
+                    keywordLocation: context.keywordLocation
+                )
+            ])
+        } else {
+//            print("### Normal!!!!")
+            return result
+        }
+    }
+}
+
 public class Draft202012Validator: Validator {
   let schema: [String: Any]
   let resolver: RefResolver
@@ -25,8 +62,8 @@ public class Draft202012Validator: Validator {
     "const": const,
     "dependencies": dependencies,
     "dependentSchemas": dependentSchemas,
-    "minLength": minLength,
-    "maxLength": maxLength,
+    "minLength": Decorator(minLength).decorate,
+    "maxLength": Decorator(maxLength).decorate,
     "minimum": minimum,
     "maximum": maximum,
     "exclusiveMinimum": exclusiveMinimum,
@@ -44,7 +81,7 @@ public class Draft202012Validator: Validator {
     "allOf": allOf,
     "oneOf": oneOf,
     "anyOf": anyOf,
-    "type": type,
+    "type": Decorator(type).decorate,
     "required": required,
     "propertyNames":  propertyNames,
     "properties": properties,
